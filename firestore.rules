@@ -1,0 +1,69 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return signedIn() &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    match /users/{uid} {
+      allow read: if isSelf(uid) || isAdmin();
+      allow create: if isSelf(uid);
+      allow update: if isAdmin() ||
+        (isSelf(uid) && request.resource.data.role == resource.data.role);
+      allow delete: if isAdmin();
+    }
+
+    match /classes/{docId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /subjects/{docId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /materials/{docId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /quiz_questions/{docId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /quiz_attempts/{docId} {
+      allow read: if isAdmin() || isSelf(resource.data.studentId);
+      allow create: if signedIn() && request.resource.data.studentId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /mood_entries/{docId} {
+      allow read: if isAdmin() || isSelf(resource.data.studentId);
+      allow create: if signedIn() && request.resource.data.studentId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /reflections/{docId} {
+      allow read: if isAdmin() || isSelf(resource.data.studentId);
+      allow create: if signedIn() && request.resource.data.studentId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /chats/{docId} {
+      allow read: if isAdmin() || isSelf(resource.data.studentId);
+      allow create: if signedIn() && request.resource.data.studentId == request.auth.uid;
+      allow update, delete: if false;
+    }
+  }
+}
