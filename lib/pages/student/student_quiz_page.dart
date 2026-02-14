@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import '../../config/app_theme.dart';
 import '../../models/app_user.dart';
 import '../../models/quiz_attempt.dart';
 import '../../models/quiz_question.dart';
@@ -18,461 +19,502 @@ class StudentQuizPage extends StatefulWidget {
 }
 
 class _StudentQuizPageState extends State<StudentQuizPage> {
+  List<SchoolClass> _classes = <SchoolClass>[];
+  List<SubjectModel> _subjects = <SubjectModel>[];
+  String? _selectedClassId;
   String? _selectedSubjectId;
-  String _selectedChapter = 'All Chapters';
+  String? _selectedChapter;
+
   int _questionCount = 5;
+  List<QuizQuestion>? _quiz;
+  Map<String, int> _answers = <String, int>{};
+  bool _submitted = false;
+  int _correctCount = 0;
+  bool _loading = false;
 
-  List<QuizQuestion> _activeQuestions = <QuizQuestion>[];
-  final Map<String, int> _selectedAnswers = <String, int>{};
-  bool _loadingQuiz = false;
-  bool _submitting = false;
-  double? _lastScore;
-  int? _lastCorrect;
-  int? _lastTotalQuestions;
-
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+  @override
+  void initState() {
+    super.initState();
+    _selectedClassId = widget.student.classId;
+    _loadMeta();
   }
 
-  Future<void> _startQuiz({
-    required String classId,
-    required String subjectId,
-  }) async {
-    setState(() {
-      _loadingQuiz = true;
-      _lastScore = null;
-      _lastCorrect = null;
-      _lastTotalQuestions = null;
-    });
-    try {
-      final String? chapter = _selectedChapter == 'All Chapters'
-          ? null
-          : _selectedChapter;
-      final List<QuizQuestion> questions = await FirestoreService.instance
-          .getRandomQuestions(
-            classId: classId,
-            subjectId: subjectId,
-            count: _questionCount,
-            chapter: chapter,
-          );
-
-      if (questions.isEmpty) {
-        _showMessage('No quiz questions available for this selection.');
-        return;
-      }
-
-      setState(() {
-        _activeQuestions = questions;
-        _selectedAnswers.clear();
-      });
-    } catch (error) {
-      _showMessage(error.toString());
-    } finally {
-      if (mounted) {
-        setState(() => _loadingQuiz = false);
-      }
-    }
-  }
-
-  Future<void> _submitQuiz({
-    required String classId,
-    required String subjectId,
-  }) async {
-    if (_activeQuestions.isEmpty) {
+  Future<void> _loadMeta() async {
+    final List<SchoolClass> classes =
+        await FirestoreService.instance.streamClasses().first;
+    final List<SubjectModel> subjects =
+        await FirestoreService.instance.streamSubjects().first;
+    if (!mounted) {
       return;
     }
-    setState(() => _submitting = true);
+    setState(() {
+      _classes = classes;
+      _subjects = subjects;
+    });
+  }
 
+  Future<void> _startQuiz() async {
+    if (_selectedClassId == null || _selectedSubjectId == null) {
+      return;
+    }
+    setState(() {
+      _loading = true;
+      _quiz = null;
+      _answers = <String, int>{};
+      _submitted = false;
+      _correctCount = 0;
+    });
     try {
-      int correct = 0;
-      for (final QuizQuestion question in _activeQuestions) {
-        final int? answer = _selectedAnswers[question.id];
-        if (answer != null && answer == question.correctIndex) {
-          correct += 1;
-        }
-      }
-
-      final double percent = (correct / _activeQuestions.length) * 100;
-      final QuizAttempt attempt = QuizAttempt(
-        id: '',
-        studentId: widget.student.id,
-        classId: classId,
-        subjectId: subjectId,
-        chapter: _selectedChapter == 'All Chapters'
-            ? 'Mixed'
-            : _selectedChapter,
-        totalQuestions: _activeQuestions.length,
-        correctAnswers: correct,
-        scorePercent: percent,
-        questionIds: _activeQuestions.map((QuizQuestion q) => q.id).toList(),
-        attemptedAt: DateTime.now(),
-      );
-
-      await FirestoreService.instance.saveQuizAttempt(attempt);
-
-      setState(() {
-        _lastCorrect = correct;
-        _lastScore = percent;
-        _lastTotalQuestions = _activeQuestions.length;
-        _activeQuestions = <QuizQuestion>[];
-        _selectedAnswers.clear();
-      });
-      _showMessage('Quiz submitted successfully.');
+      final List<QuizQuestion> selected =
+          await FirestoreService.instance.getRandomQuestions(
+            classId: _selectedClassId!,
+            subjectId: _selectedSubjectId!,
+            count: _questionCount,
+            chapter: _selectedChapter,
+          );
+      setState(() => _quiz = selected);
     } catch (error) {
-      _showMessage(error.toString());
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
     } finally {
       if (mounted) {
-        setState(() => _submitting = false);
+        setState(() => _loading = false);
       }
+    }
+  }
+
+  Future<void> _submitQuiz() async {
+    if (_quiz == null) {
+      return;
+    }
+    int correct = 0;
+    for (final QuizQuestion question in _quiz!) {
+      if (_answers[question.id] == question.correctIndex) {
+        correct++;
+      }
+    }
+    setState(() {
+      _correctCount = correct;
+      _submitted = true;
+    });
+
+    try {
+      final double scorePercent =
+          _quiz!.isEmpty ? 0 : (correct / _quiz!.length) * 100;
+      await FirestoreService.instance.saveQuizAttempt(
+        QuizAttempt(
+          id: '',
+          studentId: widget.student.id,
+          classId: _selectedClassId!,
+          subjectId: _selectedSubjectId!,
+          chapter: _selectedChapter ?? '',
+          totalQuestions: _quiz!.length,
+          correctAnswers: correct,
+          scorePercent: scorePercent,
+          questionIds:
+              _quiz!.map((QuizQuestion question) => question.id).toList(),
+          attemptedAt: DateTime.now(),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (widget.student.classId == null) {
-      return const Center(child: Text('Select class from Dashboard first.'));
-    }
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: <Widget>[
+        // ── Setup Card ──
+        Container(
+          padding: const EdgeInsets.all(18),
+          decoration: AppTheme.cardDecoration(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              AppTheme.sectionHeader(context, 'Quiz Setup', icon: Icons.quiz_outlined),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                value: _selectedClassId,
+                decoration: const InputDecoration(
+                  labelText: 'Class',
+                  prefixIcon: Icon(Icons.class_outlined),
+                  border: OutlineInputBorder(),
+                ),
+                items: _classes
+                    .map(
+                      (SchoolClass item) => DropdownMenuItem<String>(
+                        value: item.id,
+                        child: Text(item.name),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (String? value) {
+                  setState(() {
+                    _selectedClassId = value;
+                    _selectedSubjectId = null;
+                    _selectedChapter = null;
+                  });
+                },
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: _selectedSubjectId,
+                decoration: const InputDecoration(
+                  labelText: 'Subject',
+                  prefixIcon: Icon(Icons.book_outlined),
+                  border: OutlineInputBorder(),
+                ),
+                items: _subjects
+                    .map(
+                      (SubjectModel item) => DropdownMenuItem<String>(
+                        value: item.id,
+                        child: Text(item.name),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (String? value) {
+                  setState(() {
+                    _selectedSubjectId = value;
+                    _selectedChapter = null;
+                  });
+                },
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                decoration: const InputDecoration(
+                  labelText: 'Chapter (optional)',
+                  prefixIcon: Icon(Icons.bookmark_outline),
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (String value) {
+                  setState(() {
+                    _selectedChapter = value.trim().isEmpty ? null : value.trim();
+                  });
+                },
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: <Widget>[
+                  const Icon(Icons.format_list_numbered, size: 18, color: AppTheme.secondaryText),
+                  const SizedBox(width: 2),
+                  const Text(
+                    'Questions:',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.secondaryText,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  ...<int>[5, 10, 15, 20].map((int count) {
+                    final bool selected = _questionCount == count;
+                    return ChoiceChip(
+                      label: Text('$count'),
+                      selected: selected,
+                      onSelected: (_) =>
+                          setState(() => _questionCount = count),
+                    );
+                  }),
+                ],
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _loading ? null : _startQuiz,
+                  icon: _loading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.play_arrow_rounded),
+                  label: const Text('Start Quiz'),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
 
-    return StreamBuilder<List<SchoolClass>>(
-      stream: FirestoreService.instance.streamClasses(),
-      builder: (BuildContext context, AsyncSnapshot<List<SchoolClass>> classSnapshot) {
-        return StreamBuilder<List<SubjectModel>>(
-          stream: FirestoreService.instance.streamSubjects(),
-          builder: (BuildContext context, AsyncSnapshot<List<SubjectModel>> subjectSnapshot) {
-            if (!classSnapshot.hasData || !subjectSnapshot.hasData) {
+        // ── Quiz Questions ──
+        if (_quiz != null && _quiz!.isNotEmpty)
+          ..._quiz!.asMap().entries.map((MapEntry<int, QuizQuestion> entry) {
+            final int index = entry.key;
+            final QuizQuestion question = entry.value;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Container(
+                padding: const EdgeInsets.all(16),
+                decoration: AppTheme.cardDecoration(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: <Widget>[
+                        Container(
+                          width: 30,
+                          height: 30,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE3EDFF),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Center(
+                            child: Text(
+                              '${index + 1}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.primaryBlue,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            question.question,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    ...question.options.asMap().entries.map(
+                      (MapEntry<int, String> optionEntry) {
+                        final int optionIndex = optionEntry.key;
+                        final String optionText = optionEntry.value;
+                        final bool isSelected = _answers[question.id] == optionIndex;
+                        final bool isCorrect = optionIndex == question.correctIndex;
+
+                        Color tileColor = AppTheme.surfaceWhite;
+                        Color borderColor = AppTheme.borderLight;
+                        if (_submitted) {
+                          if (isCorrect) {
+                            tileColor = const Color(0xFFE8F5E9);
+                            borderColor = const Color(0xFF66BB6A);
+                          } else if (isSelected && !isCorrect) {
+                            tileColor = const Color(0xFFFFEBEE);
+                            borderColor = const Color(0xFFEF5350);
+                          }
+                        } else if (isSelected) {
+                          tileColor = const Color(0xFFE3EDFF);
+                          borderColor = AppTheme.primaryBlue;
+                        }
+
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(10),
+                              onTap: _submitted
+                                  ? null
+                                  : () => setState(
+                                      () => _answers[question.id] = optionIndex,
+                                    ),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 10,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: tileColor,
+                                  borderRadius: BorderRadius.circular(10),
+                                  border: Border.all(color: borderColor),
+                                ),
+                                child: Row(
+                                  children: <Widget>[
+                                    Container(
+                                      width: 24,
+                                      height: 24,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: isSelected
+                                              ? AppTheme.primaryBlue
+                                              : AppTheme.secondaryText,
+                                          width: isSelected ? 2 : 1.5,
+                                        ),
+                                        color: isSelected
+                                            ? AppTheme.primaryBlue
+                                            : Colors.transparent,
+                                      ),
+                                      child: isSelected
+                                          ? const Icon(
+                                              Icons.check,
+                                              size: 14,
+                                              color: Colors.white,
+                                            )
+                                          : null,
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        optionText,
+                                        style: const TextStyle(fontSize: 14),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+
+        // ── Submit / Score ──
+        if (_quiz != null && _quiz!.isNotEmpty && !_submitted)
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: _submitQuiz,
+              child: const Text('Submit Quiz'),
+            ),
+          ),
+        if (_submitted)
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: AppTheme.accentLeftBorder(),
+            child: Row(
+              children: <Widget>[
+                Icon(
+                  _correctCount / (_quiz?.length ?? 1) >= 0.5
+                      ? Icons.emoji_events_outlined
+                      : Icons.sentiment_dissatisfied_outlined,
+                  color: _correctCount / (_quiz?.length ?? 1) >= 0.5
+                      ? const Color(0xFF2E7D32)
+                      : const Color(0xFFD32F2F),
+                  size: 28,
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      const Text(
+                        'Quiz Result',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Score: $_correctCount / ${_quiz!.length}',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: AppTheme.secondaryText,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                AppTheme.scoreBadge(
+                  (_correctCount / _quiz!.length) * 100,
+                ),
+              ],
+            ),
+          ),
+        const SizedBox(height: 20),
+
+        // ── History ──
+        AppTheme.sectionHeader(context, 'Quiz History', icon: Icons.history),
+        const SizedBox(height: 4),
+        StreamBuilder<List<QuizAttempt>>(
+          stream: FirestoreService.instance.streamStudentAttempts(
+            widget.student.id,
+          ),
+          builder: (
+            BuildContext context,
+            AsyncSnapshot<List<QuizAttempt>> snapshot,
+          ) {
+            if (!snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
-            final List<SchoolClass> classes = classSnapshot.data!;
-            final List<SubjectModel> allSubjects = subjectSnapshot.data!;
-
-            final SchoolClass? schoolClass = classes
-                .where((SchoolClass c) => c.id == widget.student.classId)
-                .cast<SchoolClass?>()
-                .firstOrNull;
-
-            if (schoolClass == null) {
-              return const Center(
-                child: Text(
-                  'Selected class not found. Please re-select class.',
+            final List<QuizAttempt> attempts = snapshot.data!;
+            if (attempts.isEmpty) {
+              return Container(
+                padding: const EdgeInsets.all(16),
+                decoration: AppTheme.tintedContainer(),
+                child: const Text(
+                  'No quiz attempts yet.',
+                  style: TextStyle(color: AppTheme.secondaryText),
                 ),
               );
             }
 
-            final Map<String, SubjectModel> subjectById =
-                <String, SubjectModel>{
-                  for (final SubjectModel s in allSubjects) s.id: s,
-                };
-            final List<SubjectModel> classSubjects = schoolClass.subjectIds
-                .map((String id) => subjectById[id])
-                .whereType<SubjectModel>()
-                .toList();
-
-            if (classSubjects.isEmpty) {
-              return const Center(
-                child: Text('No subjects assigned to your class yet.'),
-              );
-            }
-
-            if (_selectedSubjectId == null ||
-                classSubjects.every(
-                  (SubjectModel s) => s.id != _selectedSubjectId,
-                )) {
-              _selectedSubjectId = classSubjects.first.id;
-            }
-
-            return StreamBuilder<List<QuizQuestion>>(
-              stream: FirestoreService.instance.streamQuizQuestions(
-                classId: schoolClass.id,
-                subjectId: _selectedSubjectId!,
-              ),
-              builder:
-                  (
-                    BuildContext context,
-                    AsyncSnapshot<List<QuizQuestion>> questionSnapshot,
-                  ) {
-                    if (!questionSnapshot.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    final List<QuizQuestion> questionBank =
-                        questionSnapshot.data!;
-                    final List<String> chapters = <String>[
-                      'All Chapters',
-                      ...{for (final QuizQuestion q in questionBank) q.chapter},
-                    ];
-                    if (!chapters.contains(_selectedChapter)) {
-                      _selectedChapter = 'All Chapters';
-                    }
-
-                    return ListView(
-                      padding: const EdgeInsets.all(16),
+            return Column(
+              children: attempts.map((QuizAttempt attempt) {
+                final String subjectName = _subjects
+                    .where((SubjectModel item) => item.id == attempt.subjectId)
+                    .map((SubjectModel item) => item.name)
+                    .fold<String?>(null, (String? previous, String element) => previous ?? element) ?? 'Unknown';
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: AppTheme.cardDecoration(radius: 12),
+                    child: Row(
                       children: <Widget>[
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                Text('Class: ${schoolClass.name}'),
-                                const SizedBox(height: 8),
-                                DropdownButtonFormField<String>(
-                                  initialValue: _selectedSubjectId,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Subject',
-                                    border: OutlineInputBorder(),
-                                  ),
-                                  items: classSubjects
-                                      .map(
-                                        (SubjectModel subject) =>
-                                            DropdownMenuItem<String>(
-                                              value: subject.id,
-                                              child: Text(subject.name),
-                                            ),
-                                      )
-                                      .toList(),
-                                  onChanged: (String? value) {
-                                    if (value == null) {
-                                      return;
-                                    }
-                                    setState(() {
-                                      _selectedSubjectId = value;
-                                      _selectedChapter = 'All Chapters';
-                                      _activeQuestions = <QuizQuestion>[];
-                                      _selectedAnswers.clear();
-                                    });
-                                  },
-                                ),
-                                const SizedBox(height: 8),
-                                DropdownButtonFormField<String>(
-                                  initialValue: _selectedChapter,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Chapter',
-                                    border: OutlineInputBorder(),
-                                  ),
-                                  items: chapters
-                                      .map(
-                                        (String chapter) =>
-                                            DropdownMenuItem<String>(
-                                              value: chapter,
-                                              child: Text(chapter),
-                                            ),
-                                      )
-                                      .toList(),
-                                  onChanged: (String? value) {
-                                    if (value == null) {
-                                      return;
-                                    }
-                                    setState(() => _selectedChapter = value);
-                                  },
-                                ),
-                                const SizedBox(height: 8),
-                                DropdownButtonFormField<int>(
-                                  initialValue: _questionCount,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Number of Questions',
-                                    border: OutlineInputBorder(),
-                                  ),
-                                  items: const <DropdownMenuItem<int>>[
-                                    DropdownMenuItem<int>(
-                                      value: 5,
-                                      child: Text('5'),
-                                    ),
-                                    DropdownMenuItem<int>(
-                                      value: 10,
-                                      child: Text('10'),
-                                    ),
-                                    DropdownMenuItem<int>(
-                                      value: 15,
-                                      child: Text('15'),
-                                    ),
-                                  ],
-                                  onChanged: (int? value) {
-                                    if (value == null) {
-                                      return;
-                                    }
-                                    setState(() => _questionCount = value);
-                                  },
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Question bank size: ${questionBank.length}',
-                                ),
-                                const SizedBox(height: 8),
-                                FilledButton(
-                                  onPressed: (_loadingQuiz || _submitting)
-                                      ? null
-                                      : () => _startQuiz(
-                                          classId: schoolClass.id,
-                                          subjectId: _selectedSubjectId!,
-                                        ),
-                                  child: Text(
-                                    _loadingQuiz
-                                        ? 'Loading...'
-                                        : 'Start Random Quiz',
-                                  ),
-                                ),
-                                if (_lastScore != null) ...<Widget>[
-                                  const SizedBox(height: 10),
-                                  Text(
-                                    'Last Score: ${_lastScore!.toStringAsFixed(1)}% '
-                                    '($_lastCorrect/$_lastTotalQuestions)',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        if (_activeQuestions.isNotEmpty) ...<Widget>[
-                          Card(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.surfaceContainerHighest,
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Text(
-                                'Current Quiz: ${_activeQuestions.length} questions',
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              Text(
+                                subjectName,
                                 style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
                                 ),
                               ),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          ...List<Widget>.generate(_activeQuestions.length, (
-                            int index,
-                          ) {
-                            final QuizQuestion question =
-                                _activeQuestions[index];
-                            return Card(
-                              child: Padding(
-                                padding: const EdgeInsets.all(12),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: <Widget>[
-                                    Text(
-                                      'Q${index + 1}. ${question.question}',
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    ...List<Widget>.generate(
-                                      question.options.length,
-                                      (int optionIndex) {
-                                        final bool selected =
-                                            _selectedAnswers[question.id] ==
-                                            optionIndex;
-                                        return ListTile(
-                                          dense: true,
-                                          contentPadding: EdgeInsets.zero,
-                                          leading: Icon(
-                                            selected
-                                                ? Icons.radio_button_checked
-                                                : Icons.radio_button_off,
-                                          ),
-                                          title: Text(
-                                            question.options[optionIndex],
-                                          ),
-                                          onTap: () {
-                                            setState(() {
-                                              _selectedAnswers[question.id] =
-                                                  optionIndex;
-                                            });
-                                          },
-                                        );
-                                      },
-                                    ),
-                                  ],
+                              const SizedBox(height: 2),
+                              Text(
+                                '${attempt.correctAnswers}/${attempt.totalQuestions} · ${attempt.attemptedAt == null ? '' : DateFormat.yMMMd().add_jm().format(attempt.attemptedAt!)}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppTheme.secondaryText,
                                 ),
                               ),
-                            );
-                          }),
-                          FilledButton(
-                            onPressed: _submitting
-                                ? null
-                                : () => _submitQuiz(
-                                    classId: schoolClass.id,
-                                    subjectId: _selectedSubjectId!,
-                                  ),
-                            child: Text(
-                              _submitting ? 'Submitting...' : 'Submit Quiz',
-                            ),
+                            ],
                           ),
-                        ],
-                        const SizedBox(height: 14),
-                        Text(
-                          'Score History',
-                          style: Theme.of(context).textTheme.titleMedium,
                         ),
-                        const SizedBox(height: 8),
-                        StreamBuilder<List<QuizAttempt>>(
-                          stream: FirestoreService.instance
-                              .streamStudentAttempts(widget.student.id),
-                          builder:
-                              (
-                                BuildContext context,
-                                AsyncSnapshot<List<QuizAttempt>> snapshot,
-                              ) {
-                                if (!snapshot.hasData) {
-                                  return const Center(
-                                    child: CircularProgressIndicator(),
-                                  );
-                                }
-                                final List<QuizAttempt> attempts =
-                                    snapshot.data!;
-                                if (attempts.isEmpty) {
-                                  return const Card(
-                                    child: Padding(
-                                      padding: EdgeInsets.all(12),
-                                      child: Text('No attempts yet.'),
-                                    ),
-                                  );
-                                }
-                                return Column(
-                                  children: attempts.take(15).map((
-                                    QuizAttempt attempt,
-                                  ) {
-                                    final String subjectName =
-                                        subjectById[attempt.subjectId]?.name ??
-                                        'Unknown Subject';
-                                    return Card(
-                                      child: ListTile(
-                                        title: Text(
-                                          '$subjectName - ${attempt.scorePercent.toStringAsFixed(1)}%',
-                                        ),
-                                        subtitle: Text(
-                                          '${attempt.correctAnswers}/${attempt.totalQuestions} correct'
-                                          ' | ${attempt.chapter}',
-                                        ),
-                                        trailing: Text(
-                                          attempt.attemptedAt == null
-                                              ? '-'
-                                              : DateFormat.yMMMd().format(
-                                                  attempt.attemptedAt!,
-                                                ),
-                                        ),
-                                      ),
-                                    );
-                                  }).toList(),
-                                );
-                              },
-                        ),
+                        AppTheme.scoreBadge(attempt.scorePercent),
                       ],
-                    );
-                  },
+                    ),
+                  ),
+                );
+              }).toList(),
             );
           },
-        );
-      },
+        ),
+      ],
     );
   }
-}
-
-extension<T> on Iterable<T> {
-  T? get firstOrNull => isEmpty ? null : first;
 }

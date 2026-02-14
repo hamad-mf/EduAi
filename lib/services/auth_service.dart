@@ -39,7 +39,7 @@ class AuthService {
 
     await firebaseUser.updateDisplayName(name.trim());
 
-    final bool isAdmin = AppConfig.bootstrapAdminEmails
+    final bool isTeacher = AppConfig.bootstrapAdminEmails
         .map((String value) => value.toLowerCase().trim())
         .contains(email.toLowerCase().trim());
 
@@ -47,7 +47,7 @@ class AuthService {
       id: firebaseUser.uid,
       name: name.trim(),
       email: email.trim(),
-      role: isAdmin ? UserRole.admin : UserRole.student,
+      role: isTeacher ? UserRole.admin : UserRole.student,
       createdAt: DateTime.now(),
     );
 

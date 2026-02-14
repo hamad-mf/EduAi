@@ -37,6 +37,31 @@ class FirestoreService {
       _db.collection('reflections');
   CollectionReference<Map<String, dynamic>> get _chats =>
       _db.collection('chats');
+  CollectionReference<Map<String, dynamic>> get _appConfig =>
+      _db.collection('app_config');
+
+  String _readStringField(Map<String, dynamic> data, List<String> keys) {
+    for (final String key in keys) {
+      final dynamic value = data[key];
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+    }
+
+    for (final MapEntry<String, dynamic> entry in data.entries) {
+      final String normalized = entry.key.toLowerCase().replaceAll('_', '');
+      for (final String key in keys) {
+        final String keyNormalized = key.toLowerCase().replaceAll('_', '');
+        if (normalized == keyNormalized &&
+            entry.value is String &&
+            (entry.value as String).trim().isNotEmpty) {
+          return (entry.value as String).trim();
+        }
+      }
+    }
+
+    return '';
+  }
 
   Stream<List<SchoolClass>> streamClasses() {
     return _classes
@@ -127,6 +152,34 @@ class FirestoreService {
     }, SetOptions(merge: true));
   }
 
+  Future<String> getGeminiApiKey() async {
+    final DocumentSnapshot<Map<String, dynamic>> snapshot = await _appConfig
+        .doc('gemini')
+        .get();
+    if (!snapshot.exists) {
+      return '';
+    }
+
+    final Map<String, dynamic>? data = snapshot.data();
+    if (data == null) {
+      return '';
+    }
+
+    return _readStringField(data, const <String>[
+      'apiKey',
+      'api_key',
+      'apikey',
+      'geminiApiKey',
+    ]);
+  }
+
+  Future<void> saveGeminiApiKey(String apiKey) async {
+    await _appConfig.doc('gemini').set(<String, dynamic>{
+      'apiKey': apiKey.trim(),
+      'updatedAt': Timestamp.now(),
+    }, SetOptions(merge: true));
+  }
+
   Stream<List<StudyMaterial>> streamMaterials({
     required String classId,
     required String subjectId,
@@ -135,6 +188,18 @@ class FirestoreService {
         .where('classId', isEqualTo: classId)
         .where('subjectId', isEqualTo: subjectId)
         .orderBy('chapter')
+        .snapshots()
+        .map(
+          (QuerySnapshot<Map<String, dynamic>> snapshot) => snapshot.docs
+              .map(StudyMaterial.fromDoc)
+              .whereType<StudyMaterial>()
+              .toList(),
+        );
+  }
+
+  Stream<List<StudyMaterial>> streamClassMaterials({required String classId}) {
+    return _materials
+        .where('classId', isEqualTo: classId)
         .snapshots()
         .map(
           (QuerySnapshot<Map<String, dynamic>> snapshot) => snapshot.docs
@@ -366,6 +431,24 @@ class FirestoreService {
         );
   }
 
+  Future<List<ChatEntry>> getRecentChats(
+    String studentId, {
+    int limit = 8,
+  }) async {
+    final QuerySnapshot<Map<String, dynamic>> snapshot = await _chats
+        .where('studentId', isEqualTo: studentId)
+        .orderBy('createdAt', descending: true)
+        .limit(limit)
+        .get();
+
+    return snapshot.docs
+        .map(ChatEntry.fromDoc)
+        .whereType<ChatEntry>()
+        .toList()
+        .reversed
+        .toList();
+  }
+
   Future<void> saveChat({
     required String studentId,
     required String userMessage,
@@ -378,6 +461,36 @@ class FirestoreService {
       'aiReply': aiReply.trim(),
       'createdAt': Timestamp.now(),
     });
+  }
+
+  Future<int> clearChats(String studentId) async {
+    const int batchSize = 400;
+    int deletedCount = 0;
+
+    while (true) {
+      final QuerySnapshot<Map<String, dynamic>> snapshot = await _chats
+          .where('studentId', isEqualTo: studentId)
+          .limit(batchSize)
+          .get();
+
+      if (snapshot.docs.isEmpty) {
+        break;
+      }
+
+      final WriteBatch batch = _db.batch();
+      for (final QueryDocumentSnapshot<Map<String, dynamic>> doc
+          in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+      deletedCount += snapshot.docs.length;
+
+      if (snapshot.docs.length < batchSize) {
+        break;
+      }
+    }
+
+    return deletedCount;
   }
 
   Stream<List<AppUser>> streamStudents() {

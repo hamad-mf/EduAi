@@ -1,11 +1,12 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'config/app_theme.dart';
 import 'models/app_user.dart';
-import 'pages/admin/admin_shell_page.dart';
-import 'pages/auth/auth_page.dart';
+import 'pages/auth/auth_flow_page.dart';
 import 'pages/shared/loading_page.dart';
 import 'pages/student/student_shell_page.dart';
+import 'pages/teacher/teacher_shell_page.dart';
 import 'services/auth_service.dart';
 
 class EduAiApp extends StatelessWidget {
@@ -16,13 +17,7 @@ class EduAiApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'EduAI',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0F766E),
-          secondary: const Color(0xFFF97316),
-        ),
-        useMaterial3: true,
-      ),
+      theme: AppTheme.lightTheme(),
       home: const _RootGate(),
     );
   }
@@ -42,7 +37,7 @@ class _RootGate extends StatelessWidget {
 
         final User? firebaseUser = authSnapshot.data;
         if (firebaseUser == null) {
-          return const AuthPage();
+          return const AuthFlowPage();
         }
 
         return FutureBuilder<void>(
@@ -70,7 +65,7 @@ class _RootGate extends StatelessWidget {
                     }
 
                     if (profile.role == UserRole.admin) {
-                      return AdminShellPage(admin: profile);
+                      return TeacherShellPage(teacher: profile);
                     }
                     return StudentShellPage(student: profile);
                   },

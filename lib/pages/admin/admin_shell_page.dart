@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../config/app_theme.dart';
 import '../../models/app_user.dart';
 import '../../services/auth_service.dart';
 import 'admin_classes_page.dart';
@@ -42,27 +43,65 @@ class _AdminShellPageState extends State<AdminShellPage> {
       appBar: AppBar(
         title: Text(_titles[_index]),
         actions: <Widget>[
-          IconButton(
-            onPressed: AuthService.instance.signOut,
-            icon: const Icon(Icons.logout),
-            tooltip: 'Logout',
+          Container(
+            margin: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE3EDFF),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: IconButton(
+              onPressed: AuthService.instance.signOut,
+              icon: const Icon(Icons.logout_rounded, size: 20),
+              tooltip: 'Logout',
+              color: AppTheme.primaryBlue,
+            ),
           ),
         ],
       ),
-      body: IndexedStack(index: _index, children: pages),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _index,
-        onDestinationSelected: (int value) => setState(() => _index = value),
-        destinations: const <NavigationDestination>[
-          NavigationDestination(icon: Icon(Icons.class_), label: 'Classes'),
-          NavigationDestination(
-            icon: Icon(Icons.menu_book),
-            label: 'Materials',
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: AppTheme.pageBackgroundGradient,
+        ),
+        child: IndexedStack(index: _index, children: pages),
+      ),
+      bottomNavigationBar: Container(
+        decoration: const BoxDecoration(
+          border: Border(
+            top: BorderSide(color: Color(0xFFE8EDF5), width: 1),
           ),
-          NavigationDestination(icon: Icon(Icons.quiz), label: 'Quiz'),
-          NavigationDestination(icon: Icon(Icons.people), label: 'Students'),
-          NavigationDestination(icon: Icon(Icons.analytics), label: 'Usage'),
-        ],
+        ),
+        child: NavigationBar(
+          selectedIndex: _index,
+          onDestinationSelected: (int value) =>
+              setState(() => _index = value),
+          destinations: const <NavigationDestination>[
+            NavigationDestination(
+              icon: Icon(Icons.class_outlined),
+              selectedIcon: Icon(Icons.class_),
+              label: 'Classes',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.menu_book_outlined),
+              selectedIcon: Icon(Icons.menu_book),
+              label: 'Materials',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.quiz_outlined),
+              selectedIcon: Icon(Icons.quiz),
+              label: 'Quiz',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.people_outline),
+              selectedIcon: Icon(Icons.people),
+              label: 'Students',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.analytics_outlined),
+              selectedIcon: Icon(Icons.analytics),
+              label: 'Usage',
+            ),
+          ],
+        ),
       ),
     );
   }

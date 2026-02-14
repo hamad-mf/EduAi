@@ -17,8 +17,7 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if isSelf(uid) || isAdmin();
       allow create: if isSelf(uid);
-      allow update: if isAdmin() ||
-        (isSelf(uid) && request.resource.data.role == resource.data.role);
+      allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
@@ -28,6 +27,11 @@ service cloud.firestore {
     }
 
     match /subjects/{docId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /app_config/{docId} {
       allow read: if signedIn();
       allow write: if isAdmin();
     }
@@ -63,7 +67,8 @@ service cloud.firestore {
     match /chats/{docId} {
       allow read: if isAdmin() || isSelf(resource.data.studentId);
       allow create: if signedIn() && request.resource.data.studentId == request.auth.uid;
-      allow update, delete: if false;
+      allow update: if false;
+      allow delete: if isAdmin() || isSelf(resource.data.studentId);
     }
   }
 }

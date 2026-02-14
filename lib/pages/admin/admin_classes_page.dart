@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../config/app_theme.dart';
 import '../../models/app_user.dart';
 import '../../models/school_class.dart';
 import '../../models/subject_model.dart';
@@ -15,30 +16,34 @@ class AdminClassesPage extends StatefulWidget {
 }
 
 class _AdminClassesPageState extends State<AdminClassesPage> {
-  final TextEditingController _classController = TextEditingController();
-  final TextEditingController _subjectController = TextEditingController();
+  final TextEditingController _classNameController = TextEditingController();
+  final TextEditingController _subjectNameController = TextEditingController();
   bool _savingClass = false;
   bool _savingSubject = false;
 
   @override
   void dispose() {
-    _classController.dispose();
-    _subjectController.dispose();
+    _classNameController.dispose();
+    _subjectNameController.dispose();
     super.dispose();
   }
 
-  Future<void> _createClass() async {
-    final String value = _classController.text.trim();
-    if (value.isEmpty) {
+  Future<void> _addClass() async {
+    final String name = _classNameController.text.trim();
+    if (name.isEmpty) {
       return;
     }
-
     setState(() => _savingClass = true);
     try {
-      await FirestoreService.instance.saveClass(name: value);
-      _classController.clear();
+      await FirestoreService.instance.saveClass(name: name);
+      _classNameController.clear();
     } catch (error) {
-      _showMessage(error.toString());
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
     } finally {
       if (mounted) {
         setState(() => _savingClass = false);
@@ -46,18 +51,22 @@ class _AdminClassesPageState extends State<AdminClassesPage> {
     }
   }
 
-  Future<void> _createSubject() async {
-    final String value = _subjectController.text.trim();
-    if (value.isEmpty) {
+  Future<void> _addSubject() async {
+    final String name = _subjectNameController.text.trim();
+    if (name.isEmpty) {
       return;
     }
-
     setState(() => _savingSubject = true);
     try {
-      await FirestoreService.instance.saveSubject(name: value);
-      _subjectController.clear();
+      await FirestoreService.instance.saveSubject(name: name);
+      _subjectNameController.clear();
     } catch (error) {
-      _showMessage(error.toString());
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
     } finally {
       if (mounted) {
         setState(() => _savingSubject = false);
@@ -65,84 +74,58 @@ class _AdminClassesPageState extends State<AdminClassesPage> {
     }
   }
 
-  void _showMessage(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+  Future<void> _toggleSubjectInClass(
+    SchoolClass schoolClass,
+    String subjectId,
+    bool assign,
+  ) async {
+    try {
+      final List<String> updatedIds = List<String>.from(schoolClass.subjectIds);
+      if (assign) {
+        if (!updatedIds.contains(subjectId)) {
+          updatedIds.add(subjectId);
+        }
+      } else {
+        updatedIds.remove(subjectId);
+      }
+      await FirestoreService.instance.updateClassSubjects(
+        classId: schoolClass.id,
+        subjectIds: updatedIds,
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
   }
 
-  Future<void> _manageClassSubjects(
-    SchoolClass schoolClass,
-    List<SubjectModel> allSubjects,
-  ) async {
-    final Set<String> selected = schoolClass.subjectIds.toSet();
+  Future<void> _deleteClass(String classId) async {
+    try {
+      await FirestoreService.instance.deleteClass(classId);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
+  }
 
-    await showDialog<void>(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Assign Subjects - ${schoolClass.name}'),
-          content: StatefulBuilder(
-            builder:
-                (
-                  BuildContext context,
-                  void Function(void Function()) setDialogState,
-                ) {
-                  return SizedBox(
-                    width: 320,
-                    child: allSubjects.isEmpty
-                        ? const Text('No subjects found. Add subjects first.')
-                        : ListView.builder(
-                            shrinkWrap: true,
-                            itemCount: allSubjects.length,
-                            itemBuilder: (BuildContext context, int index) {
-                              final SubjectModel subject = allSubjects[index];
-                              return CheckboxListTile(
-                                value: selected.contains(subject.id),
-                                title: Text(subject.name),
-                                onChanged: (bool? checked) {
-                                  setDialogState(() {
-                                    if (checked == true) {
-                                      selected.add(subject.id);
-                                    } else {
-                                      selected.remove(subject.id);
-                                    }
-                                  });
-                                },
-                              );
-                            },
-                          ),
-                  );
-                },
-          ),
-          actions: <Widget>[
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () async {
-                try {
-                  await FirestoreService.instance.updateClassSubjects(
-                    classId: schoolClass.id,
-                    subjectIds: selected.toList(),
-                  );
-                  if (!context.mounted) {
-                    return;
-                  }
-                  Navigator.of(context).pop();
-                } catch (error) {
-                  if (mounted) {
-                    _showMessage(error.toString());
-                  }
-                }
-              },
-              child: const Text('Save'),
-            ),
-          ],
-        );
-      },
-    );
+  Future<void> _deleteSubject(String subjectId) async {
+    try {
+      await FirestoreService.instance.deleteSubject(subjectId);
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
   }
 
   @override
@@ -167,177 +150,224 @@ class _AdminClassesPageState extends State<AdminClassesPage> {
 
                     final List<SchoolClass> classes = classSnapshot.data!;
                     final List<SubjectModel> subjects = subjectSnapshot.data!;
-                    final Map<String, SubjectModel> subjectById =
-                        <String, SubjectModel>{
-                          for (final SubjectModel subject in subjects)
-                            subject.id: subject,
-                        };
 
                     return ListView(
                       padding: const EdgeInsets.all(16),
                       children: <Widget>[
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                const Text(
-                                  'Add Class',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                                const SizedBox(height: 8),
-                                TextField(
-                                  controller: _classController,
-                                  decoration: const InputDecoration(
-                                    hintText: 'Std 6 / Std 7 / Std 8',
-                                    border: OutlineInputBorder(),
+                        // ── Add Class ──
+                        Container(
+                          padding: const EdgeInsets.all(18),
+                          decoration: AppTheme.cardDecoration(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              AppTheme.sectionHeader(context, 'Add Class', icon: Icons.class_outlined),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: <Widget>[
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _classNameController,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Class name',
+                                        prefixIcon: Icon(Icons.school_outlined),
+                                        border: OutlineInputBorder(),
+                                      ),
+                                      onSubmitted: (_) => _addClass(),
+                                    ),
                                   ),
-                                ),
-                                const SizedBox(height: 8),
-                                FilledButton(
-                                  onPressed: _savingClass ? null : _createClass,
-                                  child: Text(
-                                    _savingClass ? 'Saving...' : 'Add Class',
+                                  const SizedBox(width: 10),
+                                  FilledButton(
+                                    onPressed: _savingClass ? null : _addClass,
+                                    child: _savingClass
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : const Text('Add'),
                                   ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: <Widget>[
-                                const Text(
-                                  'Add Subject',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                                const SizedBox(height: 8),
-                                TextField(
-                                  controller: _subjectController,
-                                  decoration: const InputDecoration(
-                                    hintText: 'Math / Science / English',
-                                    border: OutlineInputBorder(),
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                FilledButton(
-                                  onPressed: _savingSubject
-                                      ? null
-                                      : _createSubject,
-                                  child: Text(
-                                    _savingSubject
-                                        ? 'Saving...'
-                                        : 'Add Subject',
-                                  ),
-                                ),
-                              ],
-                            ),
+                                ],
+                              ),
+                            ],
                           ),
                         ),
                         const SizedBox(height: 12),
-                        Text(
-                          'Classes (${classes.length})',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 8),
-                        if (classes.isEmpty)
-                          const Card(
-                            child: Padding(
-                              padding: EdgeInsets.all(12),
-                              child: Text('No classes created yet.'),
-                            ),
-                          ),
-                        ...classes.map((SchoolClass schoolClass) {
-                          final List<String> names = schoolClass.subjectIds
-                              .map(
-                                (String id) =>
-                                    subjectById[id]?.name ?? 'Unknown',
-                              )
-                              .toList();
-                          return Card(
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
+
+                        // ── Add Subject ──
+                        Container(
+                          padding: const EdgeInsets.all(18),
+                          decoration: AppTheme.cardDecoration(),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[
+                              AppTheme.sectionHeader(context, 'Add Subject', icon: Icons.book_outlined),
+                              const SizedBox(height: 8),
+                              Row(
                                 children: <Widget>[
-                                  Row(
-                                    children: <Widget>[
-                                      Expanded(
-                                        child: Text(
-                                          schoolClass.name,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
+                                  Expanded(
+                                    child: TextField(
+                                      controller: _subjectNameController,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Subject name',
+                                        prefixIcon: Icon(Icons.auto_stories_outlined),
+                                        border: OutlineInputBorder(),
+                                      ),
+                                      onSubmitted: (_) => _addSubject(),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  FilledButton(
+                                    onPressed:
+                                        _savingSubject ? null : _addSubject,
+                                    child: _savingSubject
+                                        ? const SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : const Text('Add'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+
+                        // ── Class List ──
+                        AppTheme.sectionHeader(context, 'Classes', icon: Icons.list_alt),
+                        const SizedBox(height: 4),
+                        if (classes.isEmpty)
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: AppTheme.tintedContainer(),
+                            child: const Text(
+                              'No classes created yet.',
+                              style: TextStyle(color: AppTheme.secondaryText),
+                            ),
+                          )
+                        else
+                          ...classes.map((SchoolClass schoolClass) {
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 8),
+                              child: Container(
+                                padding: const EdgeInsets.all(14),
+                                decoration: AppTheme.accentLeftBorder(radius: 12),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: <Widget>[
+                                    Row(
+                                      children: <Widget>[
+                                        Expanded(
+                                          child: Text(
+                                            schoolClass.name,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 15,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      TextButton(
-                                        onPressed: () => _manageClassSubjects(
-                                          schoolClass,
-                                          subjects,
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.delete_outline,
+                                            size: 20,
+                                            color: Color(0xFFD32F2F),
+                                          ),
+                                          onPressed: () =>
+                                              _deleteClass(schoolClass.id),
+                                          tooltip: 'Delete class',
                                         ),
-                                        child: const Text('Assign Subjects'),
-                                      ),
-                                      IconButton(
-                                        onPressed: () async {
-                                          await FirestoreService.instance
-                                              .deleteClass(schoolClass.id);
-                                        },
-                                        icon: const Icon(Icons.delete_outline),
-                                      ),
-                                    ],
-                                  ),
-                                  const SizedBox(height: 4),
-                                  if (names.isEmpty)
-                                    const Text('No subjects assigned yet')
-                                  else
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
                                     Wrap(
                                       spacing: 6,
                                       runSpacing: 6,
-                                      children: names
-                                          .map(
-                                            (String name) =>
-                                                Chip(label: Text(name)),
-                                          )
-                                          .toList(),
+                                      children:
+                                          subjects.map((SubjectModel subject) {
+                                            final bool assigned = schoolClass
+                                                .subjectIds
+                                                .contains(subject.id);
+                                            return FilterChip(
+                                              label: Text(subject.name),
+                                              selected: assigned,
+                                              onSelected: (bool value) =>
+                                                  _toggleSubjectInClass(
+                                                    schoolClass,
+                                                    subject.id,
+                                                    value,
+                                                  ),
+                                            );
+                                          }).toList(),
                                     ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                          );
-                        }),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Subjects (${subjects.length})',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 8),
+                            );
+                          }),
+                        const SizedBox(height: 20),
+
+                        // ── Subject List ──
+                        AppTheme.sectionHeader(context, 'Subjects', icon: Icons.subject),
+                        const SizedBox(height: 4),
                         if (subjects.isEmpty)
-                          const Card(
-                            child: Padding(
-                              padding: EdgeInsets.all(12),
-                              child: Text('No subjects created yet.'),
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: AppTheme.tintedContainer(),
+                            child: const Text(
+                              'No subjects created yet.',
+                              style: TextStyle(color: AppTheme.secondaryText),
                             ),
-                          ),
-                        ...subjects.map(
-                          (SubjectModel subject) => Card(
-                            child: ListTile(
-                              title: Text(subject.name),
-                              trailing: IconButton(
-                                onPressed: () async {
-                                  await FirestoreService.instance.deleteSubject(
-                                    subject.id,
-                                  );
-                                },
-                                icon: const Icon(Icons.delete_outline),
+                          )
+                        else
+                          ...subjects.map((SubjectModel subject) {
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 6),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 10,
+                                ),
+                                decoration: AppTheme.cardDecoration(radius: 12),
+                                child: Row(
+                                  children: <Widget>[
+                                    const Icon(
+                                      Icons.auto_stories_outlined,
+                                      color: AppTheme.primaryBlue,
+                                      size: 20,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        subject.name,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.delete_outline,
+                                        size: 20,
+                                        color: Color(0xFFD32F2F),
+                                      ),
+                                      onPressed: () =>
+                                          _deleteSubject(subject.id),
+                                      tooltip: 'Delete subject',
+                                    ),
+                                  ],
+                                ),
                               ),
-                            ),
-                          ),
-                        ),
+                            );
+                          }),
                       ],
                     );
                   },
