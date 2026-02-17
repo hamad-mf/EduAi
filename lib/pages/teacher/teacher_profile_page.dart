@@ -47,60 +47,27 @@ class _TeacherProfilePageState extends State<TeacherProfilePage> {
   @override
   Widget build(BuildContext context) {
     final Map<String, int> stats = _counts ?? <String, int>{};
+    final String adminName = widget.teacher.name.trim().isEmpty
+        ? 'Admin'
+        : widget.teacher.name.trim();
+    final String roleLabel = widget.teacher.role == UserRole.admin
+        ? 'Admin'
+        : 'Student';
 
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
       children: <Widget>[
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(22),
-          decoration: AppTheme.cardDecoration(radius: 18),
-          child: Column(
-            children: <Widget>[
-              Container(
-                width: 74,
-                height: 74,
-                decoration: BoxDecoration(
-                  gradient: AppTheme.heroGradient,
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: Center(
-                  child: Text(
-                    widget.teacher.name.isEmpty
-                        ? '?'
-                        : widget.teacher.name[0].toUpperCase(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 30,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 14),
-              Text(
-                widget.teacher.name,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.darkText,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                widget.teacher.email,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: AppTheme.secondaryText,
-                ),
-              ),
-            ],
-          ),
+        _AdminHeroCard(
+          name: adminName,
+          email: widget.teacher.email,
+          roleLabel: roleLabel,
+          loading: _loading,
+          onRefresh: _loading ? null : _loadCounts,
         ),
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: AppTheme.cardDecoration(radius: 16),
+          decoration: AppTheme.cardDecoration(radius: 18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
@@ -112,8 +79,9 @@ class _TeacherProfilePageState extends State<TeacherProfilePage> {
               _row(
                 icon: Icons.person_outline_rounded,
                 label: 'Role',
-                value: 'Teacher',
+                value: roleLabel,
               ),
+              const Divider(height: 20, color: Color(0xFFE9EEF8)),
               const SizedBox(height: 8),
               _row(
                 icon: Icons.alternate_email_rounded,
@@ -126,7 +94,7 @@ class _TeacherProfilePageState extends State<TeacherProfilePage> {
         const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: AppTheme.cardDecoration(radius: 16),
+          decoration: AppTheme.cardDecoration(radius: 18),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
@@ -138,39 +106,48 @@ class _TeacherProfilePageState extends State<TeacherProfilePage> {
                     icon: Icons.analytics_outlined,
                   ),
                   const Spacer(),
-                  IconButton(
-                    onPressed: _loading ? null : _loadCounts,
-                    icon: _loading
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.refresh_rounded, size: 20),
-                    color: AppTheme.primaryBlue,
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF4FF),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: IconButton(
+                      padding: EdgeInsets.zero,
+                      onPressed: _loading ? null : _loadCounts,
+                      icon: _loading
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.refresh_rounded, size: 18),
+                      color: AppTheme.primaryBlue,
+                    ),
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
-              _row(
+              const SizedBox(height: 8),
+              _metricCard(
                 icon: Icons.people_outline_rounded,
                 label: 'Students',
                 value: '${stats['students'] ?? 0}',
               ),
-              const SizedBox(height: 8),
-              _row(
+              const SizedBox(height: 10),
+              _metricCard(
                 icon: Icons.quiz_outlined,
                 label: 'Quiz Attempts',
                 value: '${stats['quizAttempts'] ?? 0}',
               ),
-              const SizedBox(height: 8),
-              _row(
+              const SizedBox(height: 10),
+              _metricCard(
                 icon: Icons.chat_bubble_outline_rounded,
                 label: 'Chat Messages',
                 value: '${stats['chats'] ?? 0}',
               ),
-              const SizedBox(height: 8),
-              _row(
+              const SizedBox(height: 10),
+              _metricCard(
                 icon: Icons.menu_book_outlined,
                 label: 'Materials',
                 value: '${stats['materials'] ?? 0}',
@@ -188,28 +165,251 @@ class _TeacherProfilePageState extends State<TeacherProfilePage> {
     required String value,
   }) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        Icon(icon, size: 18, color: AppTheme.secondaryText),
+        Container(
+          width: 34,
+          height: 34,
+          decoration: BoxDecoration(
+            color: const Color(0xFFEFF4FF),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, size: 18, color: AppTheme.primaryBlue),
+        ),
         const SizedBox(width: 10),
-        Text(
-          '$label: ',
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: AppTheme.secondaryText,
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.secondaryText,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.darkText,
+                ),
+              ),
+            ],
           ),
         ),
-        Expanded(
-          child: Text(
+      ],
+    );
+  }
+
+  Widget _metricCard({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFF),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFDDE7FA)),
+      ),
+      child: Row(
+        children: <Widget>[
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE9F0FF),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, size: 18, color: AppTheme.primaryBlue),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.secondaryText,
+              ),
+            ),
+          ),
+          Text(
             value,
             style: const TextStyle(
-              fontSize: 14,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              color: AppTheme.darkText,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AdminHeroCard extends StatelessWidget {
+  const _AdminHeroCard({
+    required this.name,
+    required this.email,
+    required this.roleLabel,
+    required this.loading,
+    required this.onRefresh,
+  });
+
+  final String name;
+  final String email;
+  final String roleLabel;
+  final bool loading;
+  final VoidCallback? onRefresh;
+
+  @override
+  Widget build(BuildContext context) {
+    final String initial = name.isEmpty ? '?' : name[0].toUpperCase();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: <Color>[Color(0xFFF0F5FF), Color(0xFFFFFFFF)],
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFD7E3FA)),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x141565C0),
+            blurRadius: 18,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Container(
+                width: 68,
+                height: 68,
+                decoration: BoxDecoration(
+                  gradient: AppTheme.heroGradient,
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Center(
+                  child: Text(
+                    initial,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    Text(
+                      name,
+                      style: const TextStyle(
+                        fontSize: 21,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.darkText,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      email,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppTheme.secondaryText,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(11),
+                  border: Border.all(color: const Color(0xFFD7E3FA)),
+                ),
+                child: IconButton(
+                  padding: EdgeInsets.zero,
+                  onPressed: onRefresh,
+                  icon: loading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh_rounded, size: 18),
+                  color: AppTheme.primaryBlue,
+                  tooltip: 'Refresh',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: <Widget>[
+              _ProfileChip(icon: Icons.shield_outlined, label: roleLabel),
+              const _ProfileChip(
+                icon: Icons.analytics_outlined,
+                label: 'Platform Access',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileChip extends StatelessWidget {
+  const _ProfileChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFD7E3FA)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Icon(icon, size: 16, color: AppTheme.primaryBlue),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
               fontWeight: FontWeight.w600,
               color: AppTheme.darkText,
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
